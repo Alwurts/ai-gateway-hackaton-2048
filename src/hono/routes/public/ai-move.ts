@@ -16,9 +16,9 @@ function formatHistory(history: { turn: number; direction: string; result: strin
 	if (history.length === 0) {
 		return "None";
 	}
-	// Get last 5 moves
+	// Get last 10 moves
 	return history
-		.slice(-5)
+		.slice(-10)
 		.map((h) => `Turn ${h.turn}: ${h.direction} -> ${h.result}`)
 		.join("\n");
 }

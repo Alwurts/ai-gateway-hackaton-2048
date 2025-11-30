@@ -12,6 +12,12 @@ import {
 } from "@/lib/game-logic";
 import { MODELS } from "@/lib/models";
 
+// Configuration Constants
+const MAX_CONSECUTIVE_INVALID_MOVES = 10;
+const GLOBAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const API_TIMEOUT_MS = 90 * 1000; // 90 seconds
+
+
 export type PlayerStatus = "IDLE" | "THINKING" | "PLAYING" | "WON" | "GAME_OVER" | "ERROR";
 
 export interface HistoryEntry {
@@ -32,7 +38,10 @@ export interface PlayerState {
 		maxTile: number;
 	};
 	history: HistoryEntry[];
+	consecutiveInvalidMoves: number;
+	startTimeMs?: number;
 	errorMessage?: string;
+	errorDetails?: string;
 }
 
 interface ArenaStore {
@@ -47,7 +56,7 @@ interface ArenaStore {
 
 	// The Core Logic
 	processMove: (modelId: string, direction: Direction, thinkingTimeMs: number) => void;
-	markError: (modelId: string, message: string) => void;
+	markError: (modelId: string, message: string, details?: string) => void;
 	playTurn: (modelId: string) => Promise<void>;
 	saveMatchResults: () => Promise<void>;
 }
@@ -69,6 +78,7 @@ const createInitialPlayers = (grid: Grid): Record<string, PlayerState> => {
 				maxTile: getHighestTile(playerGrid),
 			},
 			history: [],
+			consecutiveInvalidMoves: 0,
 		};
 	});
 	return players;
@@ -88,9 +98,26 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 			return;
 		}
 
+		// 2. Check global timeout
+		if (player.startTimeMs) {
+			const elapsed = Date.now() - player.startTimeMs;
+			if (elapsed > GLOBAL_TIMEOUT_MS) {
+				state.markError(
+					modelId,
+					"Global timeout exceeded",
+					`Player exceeded ${GLOBAL_TIMEOUT_MS / 1000}s limit (${Math.round(elapsed / 1000)}s elapsed)`,
+				);
+				return;
+			}
+		}
+
 		try {
-			// 2. API Call
-			const res = await apiClient.api["ai-move"].$post({
+			// 3. API Call with timeout
+			const timeoutPromise = new Promise((_, reject) =>
+				setTimeout(() => reject(new Error("API timeout")), API_TIMEOUT_MS),
+			);
+
+			const apiPromise = apiClient.api["ai-move"].$post({
 				json: {
 					grid: player.grid,
 					score: player.stats.score,
@@ -103,15 +130,19 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 				},
 			});
 
+			const res = await Promise.race([apiPromise, timeoutPromise]) as Awaited<
+				typeof apiPromise
+			>;
+
 			if (!res.ok) {
-				throw new Error("API Error");
+				throw new Error(`API Error: ${res.status}`);
 			}
 			const data = await res.json();
 
-			// 3. Process Move
+			// 4. Process Move
 			state.processMove(modelId, data.direction as Direction, data.durationMs);
 
-			// 4. Recursive Call (Next Turn)
+			// 5. Recursive Call (Next Turn)
 			// We fetch the fresh state to check if we should continue
 			const freshState = get();
 			if (freshState.isArenaRunning && freshState.players[modelId].status === "PLAYING") {
@@ -119,15 +150,27 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 			}
 		} catch (error) {
 			console.error(`Error for ${modelId}:`, error);
-			state.markError(modelId, "Failed to fetch move");
+			const errorMsg = error instanceof Error ? error.message : "Unknown error";
+			if (errorMsg.includes("timeout") || errorMsg.includes("aborted")) {
+				state.markError(
+					modelId,
+					"API timeout",
+					`Move request exceeded ${API_TIMEOUT_MS / 1000}s limit`,
+				);
+			} else {
+				state.markError(modelId, "API error", errorMsg);
+			}
 		}
 	},
 
 	startBattle: () => {
+		const now = Date.now();
 		set((state) => {
 			const newPlayers = { ...state.players };
 			Object.keys(newPlayers).forEach((key) => {
 				newPlayers[key].status = "PLAYING";
+				newPlayers[key].startTimeMs = now;
+				newPlayers[key].consecutiveInvalidMoves = 0;
 			});
 			return { isArenaRunning: true, players: newPlayers };
 		});
@@ -175,15 +218,20 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 			const newTotalTime = player.stats.totalThinkingTimeMs + thinkingTimeMs;
 			const currentMaxTile = getHighestTile(newGrid);
 
-			// 3. Determine Status
+			// 3. Update consecutive invalid counter
+			let newConsecutiveInvalid = valid ? 0 : player.consecutiveInvalidMoves + 1;
+
+			// 4. Determine Status
 			let newStatus: PlayerStatus = "PLAYING";
-			if (currentMaxTile >= state.targetTile) {
+			if (newConsecutiveInvalid >= MAX_CONSECUTIVE_INVALID_MOVES) {
+				newStatus = "ERROR";
+			} else if (currentMaxTile >= state.targetTile) {
 				newStatus = "WON";
 			} else if (checkGameOver(newGrid)) {
 				newStatus = "GAME_OVER";
 			}
 
-			// 4. Update History
+			// 5. Update History
 			const newHistory = [
 				...player.history,
 				{
@@ -208,13 +256,22 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 							maxTile: currentMaxTile,
 						},
 						history: newHistory,
+						consecutiveInvalidMoves: newConsecutiveInvalid,
+						errorMessage:
+							newStatus === "ERROR" && newConsecutiveInvalid >= MAX_CONSECUTIVE_INVALID_MOVES
+								? "Too many invalid moves"
+								: player.errorMessage,
+						errorDetails:
+							newStatus === "ERROR" && newConsecutiveInvalid >= MAX_CONSECUTIVE_INVALID_MOVES
+								? `Player made ${newConsecutiveInvalid} consecutive invalid moves (max: ${MAX_CONSECUTIVE_INVALID_MOVES})`
+								: player.errorDetails,
 					},
 				},
 			};
 		});
 	},
 
-	markError: (modelId, message) => {
+	markError: (modelId, message, details?: string) => {
 		set((state) => ({
 			players: {
 				...state.players,
@@ -222,6 +279,7 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 					...state.players[modelId],
 					status: "ERROR",
 					errorMessage: message,
+					errorDetails: details,
 				},
 			},
 		}));

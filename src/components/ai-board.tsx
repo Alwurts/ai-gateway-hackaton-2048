@@ -101,7 +101,14 @@ export default function AiBoard({ modelId }: AiBoardProps) {
 			{/* Error Message */}
 			{errorMessage && (
 				<div className="w-full bg-red-100 text-red-600 text-xs p-1 mb-2 rounded">
-					{errorMessage}
+					<div className="font-semibold">{errorMessage}</div>
+					{player.errorDetails && (
+						<div className="text-[10px] mt-0.5 opacity-80">
+							{player.errorDetails.length > 80
+								? `${player.errorDetails.slice(0, 80)}...`
+								: player.errorDetails}
+						</div>
+					)}
 				</div>
 			)}
 

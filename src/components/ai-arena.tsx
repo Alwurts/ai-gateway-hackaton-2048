@@ -47,7 +47,7 @@ export default function AiArena() {
 			<div className="flex flex-col items-center mb-8 gap-4">
 				<h1 className="text-5xl font-bold text-[#776e65]">2048 Battle Arena</h1>
 				<p className="text-[#776e65] text-lg">
-					{MODELS.length} Top AIs competing to reach the <strong>128 tile</strong> first!
+					{MODELS.length} AIs competing to reach the <strong>128 tile</strong> first!
 				</p>
 
 				{/* Controls */}
