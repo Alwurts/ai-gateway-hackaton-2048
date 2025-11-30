@@ -1,9 +1,9 @@
 import { create } from "zustand";
-import { getPresetById } from "@/lib/board-presets";
+import { apiClient } from "@/lib/api-client";
+import { getRandomIntermediateBoard } from "@/lib/board-presets";
 import {
 	addRandomTile,
 	checkGameOver,
-	createInitialGrid,
 	type Direction,
 	type Grid,
 	getHighestTile,
@@ -41,32 +41,32 @@ interface ArenaStore {
 	isArenaRunning: boolean;
 
 	// Actions
-	setPreset: (presetId: string) => void;
 	startBattle: () => void;
 	stopBattle: () => void;
-	resetArena: (presetId: string) => void;
+	resetArena: () => void;
 
 	// The Core Logic
 	processMove: (modelId: string, direction: Direction, thinkingTimeMs: number) => void;
 	markError: (modelId: string, message: string) => void;
+	playTurn: (modelId: string) => Promise<void>;
+	saveMatchResults: () => Promise<void>;
 }
 
-const createInitialPlayers = (presetId: string): Record<string, PlayerState> => {
+const createInitialPlayers = (grid: Grid): Record<string, PlayerState> => {
 	const players: Record<string, PlayerState> = {};
 
 	MODELS.forEach((id) => {
-		const presetGrid = getPresetById(presetId);
-		const grid = presetGrid ? JSON.parse(JSON.stringify(presetGrid)) : createInitialGrid();
+		const playerGrid = JSON.parse(JSON.stringify(grid));
 
 		players[id] = {
 			modelId: id,
-			grid,
+			grid: playerGrid,
 			status: "IDLE",
 			stats: {
 				moves: 0,
 				score: 0,
 				totalThinkingTimeMs: 0,
-				maxTile: getHighestTile(grid),
+				maxTile: getHighestTile(playerGrid),
 			},
 			history: [],
 		};
@@ -74,13 +74,53 @@ const createInitialPlayers = (presetId: string): Record<string, PlayerState> => 
 	return players;
 };
 
-export const useArenaStore = create<ArenaStore>((set) => ({
+export const useArenaStore = create<ArenaStore>((set, get) => ({
 	targetTile: 128,
-	players: createInitialPlayers("advanced"),
+	players: createInitialPlayers(getRandomIntermediateBoard()),
 	isArenaRunning: false,
 
-	setPreset: (presetId) => {
-		set({ players: createInitialPlayers(presetId), isArenaRunning: false });
+	playTurn: async (modelId) => {
+		const state = get();
+		const player = state.players[modelId];
+
+		// 1. Checks
+		if (!state.isArenaRunning || !player || player.status !== "PLAYING") {
+			return;
+		}
+
+		try {
+			// 2. API Call
+			const res = await apiClient.api["ai-move"].$post({
+				json: {
+					grid: player.grid,
+					score: player.stats.score,
+					modelId: modelId,
+					history: player.history.map((h) => ({
+						turn: h.turn,
+						direction: h.direction,
+						result: h.result,
+					})),
+				},
+			});
+
+			if (!res.ok) {
+				throw new Error("API Error");
+			}
+			const data = await res.json();
+
+			// 3. Process Move
+			state.processMove(modelId, data.direction as Direction, data.durationMs);
+
+			// 4. Recursive Call (Next Turn)
+			// We fetch the fresh state to check if we should continue
+			const freshState = get();
+			if (freshState.isArenaRunning && freshState.players[modelId].status === "PLAYING") {
+				freshState.playTurn(modelId);
+			}
+		} catch (error) {
+			console.error(`Error for ${modelId}:`, error);
+			state.markError(modelId, "Failed to fetch move");
+		}
 	},
 
 	startBattle: () => {
@@ -91,14 +131,20 @@ export const useArenaStore = create<ArenaStore>((set) => ({
 			});
 			return { isArenaRunning: true, players: newPlayers };
 		});
+
+		// Trigger the loop for everyone
+		const state = get();
+		Object.keys(state.players).forEach((modelId) => {
+			state.playTurn(modelId);
+		});
 	},
 
 	stopBattle: () => {
 		set({ isArenaRunning: false });
 	},
 
-	resetArena: (presetId) => {
-		set({ players: createInitialPlayers(presetId), isArenaRunning: false });
+	resetArena: () => {
+		set({ players: createInitialPlayers(getRandomIntermediateBoard()), isArenaRunning: false });
 	},
 
 	processMove: (modelId, direction, thinkingTimeMs) => {
@@ -179,5 +225,38 @@ export const useArenaStore = create<ArenaStore>((set) => ({
 				},
 			},
 		}));
+	},
+
+	saveMatchResults: async () => {
+		const state = get();
+		// Avoid double saving
+		if (state.isArenaRunning) {
+			return;
+		}
+
+		const results = Object.values(state.players).map((p: PlayerState) => ({
+			modelId: p.modelId,
+			status: p.status,
+			finalScore: p.stats.score,
+			maxTile: p.stats.maxTile,
+			movesCount: p.stats.moves,
+			totalThinkingTimeMs: p.stats.totalThinkingTimeMs,
+		}));
+
+		// Determine winner (highest score)
+		const winner = results.sort((a, b) => b.finalScore - a.finalScore)[0];
+
+		try {
+			await apiClient.api.matches.$post({
+				json: {
+					targetTile: state.targetTile,
+					winnerModelId: winner?.modelId,
+					results,
+				},
+			});
+			console.log("✅ Match results saved!");
+		} catch (error) {
+			console.error("❌ Failed to save match results:", error);
+		}
 	},
 }));

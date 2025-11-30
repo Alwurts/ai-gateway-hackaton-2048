@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { useArenaLoop } from "@/hooks/use-arena-loop";
+
 import { useArenaStore } from "@/store/arena-store";
 
 interface AiBoardProps {
@@ -39,9 +39,6 @@ const TILE_FONT_SIZES: Record<number, string> = {
 
 export default function AiBoard({ modelId }: AiBoardProps) {
 	const player = useArenaStore((state) => state.players[modelId]);
-
-	// Hook is mounted here
-	useArenaLoop(modelId);
 
 	if (!player) {
 		return <div className="bg-gray-200 h-80 rounded-lg animate-pulse" />;

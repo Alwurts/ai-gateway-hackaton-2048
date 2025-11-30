@@ -1,45 +1,12 @@
-import { customProvider, defaultSettingsMiddleware, gateway, wrapLanguageModel } from "ai";
+import { customProvider, gateway } from "ai";
 
 const languageModels = {
-	"gpt-5.1-instant": wrapLanguageModel({
-		model: gateway("openai/gpt-5.1-instant"),
-		middleware: defaultSettingsMiddleware({
-			settings: {
-				providerOptions: {
-					openai: {
-						reasoningSummary: "auto", // 'auto' for condensed or 'detailed' for comprehensive
-						reasoningEffort: "none", // 'none' | 'low' | 'medium' | 'high'
-					},
-				},
-			},
-		}),
-	}),
-	"gpt-5-nano": wrapLanguageModel({
-		model: gateway("openai/gpt-5-nano"),
-		middleware: defaultSettingsMiddleware({
-			settings: {
-				providerOptions: {
-					openai: {
-						reasoningSummary: "auto", // 'auto' for condensed or 'detailed' for comprehensive
-						reasoningEffort: "minimal", // 'minimal' | 'low' | 'medium' | 'high'
-					},
-				},
-			},
-		}),
-	}),
-	"gpt-5-mini": wrapLanguageModel({
-		model: gateway("openai/gpt-5-mini"),
-		middleware: defaultSettingsMiddleware({
-			settings: {
-				providerOptions: {
-					openai: {
-						reasoningSummary: "auto", // 'auto' for condensed or 'detailed' for comprehensive
-						reasoningEffort: "minimal", // 'minimal' | 'low' | 'medium' | 'high'
-					},
-				},
-			},
-		}),
-	}),
+	"gpt-oss-120b": gateway("openai/gpt-oss-120b"),
+	"claude-haiku-4.5": gateway("anthropic/claude-haiku-4.5"),
+	"gemini-2.5-flash-lite": gateway("google/gemini-2.5-flash-lite"),
+	"llama-3.3-70b": gateway("meta/llama-3.3-70b"),
+	"mistral-large": gateway("mistral/mistral-large"),
+	"grok-4-fast-non-reasoning": gateway("xai/grok-4-fast-non-reasoning"),
 };
 
 export const model = customProvider({ languageModels });

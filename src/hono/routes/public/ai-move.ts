@@ -1,8 +1,7 @@
 import { generateObject } from "ai";
 import { Hono } from "hono";
 import { model, type modelID } from "@/lib/models";
-import { AiMoveRequestSchema, MoveSchema } from "@/lib/schema";
-
+import { AiMoveRequestSchema } from "@/lib/schema";
 
 function formatGrid(grid: number[][]): string {
 	const maxWidth = Math.max(...grid.flat().map((n) => (n === 0 ? 1 : String(n).length)));
@@ -59,16 +58,17 @@ INSTRUCTIONS:
 	try {
 		const { object } = await generateObject({
 			model: languageModel,
-			schema: MoveSchema,
+			output: "enum",
+			enum: ["UP", "DOWN", "LEFT", "RIGHT"],
 			system: "You are a competitive 2048 AI. Reach the 128 tile as fast as possible.",
 			prompt,
+			maxRetries: 10,
 		});
 
 		const endTime = performance.now();
 
 		return c.json({
-			direction: object.direction,
-			reasoning: object.reasoning,
+			direction: object,
 			durationMs: Math.round(endTime - startTime),
 		});
 	} catch (error) {

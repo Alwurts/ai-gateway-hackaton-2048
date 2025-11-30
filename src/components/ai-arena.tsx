@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { BOARD_PRESETS } from "@/lib/board-presets";
+import { useEffect, useState } from "react";
 import { MODELS } from "@/lib/models";
 import { useArenaStore } from "@/store/arena-store";
 import AiBoard from "./ai-board";
+import GameOverModal from "./game-over-modal";
 
 export default function AiArena() {
-	const [selectedPreset, setSelectedPreset] = useState("advanced");
+	const [showGameOver, setShowGameOver] = useState(false);
 
 	// Selectors from Store
-	const { setPreset, startBattle, stopBattle, resetArena, isArenaRunning } = useArenaStore();
+	const { players, startBattle, stopBattle, resetArena, isArenaRunning, saveMatchResults } =
+		useArenaStore();
 
 	const handleToggleBattle = () => {
 		if (isArenaRunning) {
@@ -19,8 +20,27 @@ export default function AiArena() {
 		} else {
 			console.log("▶️ Starting battle");
 			startBattle();
+			setShowGameOver(false);
 		}
 	};
+
+	// Auto-stop when all players are finished
+	useEffect(() => {
+		if (!isArenaRunning) {
+			return;
+		}
+
+		const allFinished = Object.values(players).every(
+			(p) => p.status === "WON" || p.status === "GAME_OVER" || p.status === "ERROR",
+		);
+
+		if (allFinished && Object.keys(players).length > 0) {
+			console.log("🏁 All players finished! Stopping battle.");
+			stopBattle();
+			saveMatchResults();
+			setShowGameOver(true);
+		}
+	}, [players, isArenaRunning, stopBattle, saveMatchResults]);
 
 	return (
 		<div className="flex flex-col items-center min-h-screen bg-[#faf8ef] p-8 font-sans">
@@ -31,55 +51,36 @@ export default function AiArena() {
 				</p>
 
 				{/* Controls */}
-				<div className="flex flex-col md:flex-row gap-4 items-center bg-white p-4 rounded-lg shadow-sm">
-					<div className="flex items-center gap-3">
-						<label htmlFor="preset-select" className="text-[#776e65] font-semibold">
-							Starting Board:
-						</label>
-						<select
-							id="preset-select"
-							value={selectedPreset}
-							onChange={(e) => {
-								const newPreset = e.target.value;
-								console.log(`🔄 Changing preset to: ${newPreset}`);
-								setSelectedPreset(newPreset);
-								stopBattle();
-								setPreset(newPreset);
-							}}
-							className="px-4 py-2 rounded-md border-2 border-[#bbada0] bg-white text-[#776e65] font-semibold cursor-pointer"
-							disabled={isArenaRunning}
-						>
-							{BOARD_PRESETS.map((preset) => (
-								<option key={preset.id} value={preset.id}>
-									{preset.name} - {preset.description}
-								</option>
-							))}
-						</select>
-					</div>
+				<div className="flex gap-4 items-center bg-white p-4 rounded-lg shadow-sm">
+					<button
+						type="button"
+						onClick={handleToggleBattle}
+						className={`px-6 py-2 rounded-md font-bold text-lg transition-colors shadow-md ${
+							isArenaRunning
+								? "bg-red-500 hover:bg-red-600 text-white"
+								: "bg-purple-600 hover:bg-purple-700 text-white"
+						}`}
+					>
+						{isArenaRunning ? "Stop Battle" : "Start Battle"}
+					</button>
 
-					<div className="h-8 w-[2px] bg-gray-200 hidden md:block"></div>
+					<button
+						type="button"
+						onClick={() => resetArena()}
+						className="px-6 py-2 rounded-md font-bold text-lg bg-[#8f7a66] hover:bg-[#9c8b7a] text-white transition-colors shadow-md"
+					>
+						Reset
+					</button>
 
-					<div className="flex gap-4">
-						<button
-							type="button"
-							onClick={handleToggleBattle}
-							className={`px-6 py-2 rounded-md font-bold text-lg transition-colors shadow-md ${
-								isArenaRunning
-									? "bg-red-500 hover:bg-red-600 text-white"
-									: "bg-purple-600 hover:bg-purple-700 text-white"
-							}`}
-						>
-							{isArenaRunning ? "Stop Battle" : "Start Battle"}
-						</button>
+					<div className="h-8 w-[2px] bg-gray-200"></div>
 
-						<button
-							type="button"
-							onClick={() => resetArena(selectedPreset)}
-							className="px-6 py-2 rounded-md font-bold text-lg bg-[#8f7a66] hover:bg-[#9c8b7a] text-white transition-colors shadow-md"
-						>
-							Reset
-						</button>
-					</div>
+					<button
+						type="button"
+						onClick={() => setShowGameOver(true)}
+						className="px-6 py-2 rounded-md font-bold text-lg bg-[#edc22e] hover:bg-[#ddb21e] text-white transition-colors shadow-md"
+					>
+						View Leaderboard
+					</button>
 				</div>
 			</div>
 
@@ -89,6 +90,7 @@ export default function AiArena() {
 					<AiBoard key={modelId} modelId={modelId} />
 				))}
 			</div>
+			<GameOverModal open={showGameOver} onOpenChange={setShowGameOver} />
 		</div>
 	);
 }
