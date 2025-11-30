@@ -83,6 +83,29 @@ export default function AiArena() {
 					<AiBoard key={modelId} modelId={modelId} />
 				))}
 			</div>
+
+			<footer className="mt-12 text-center text-[#776e65] text-sm">
+				<div className="flex justify-center items-center gap-6">
+					<a
+						href="https://github.com/Alwurts/ai-gateway-hackaton-2048"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="hover:text-[#9c8b7a] transition-colors"
+					>
+						GitHub
+					</a>
+					<span>•</span>
+					<a
+						href="https://x.com/Alwurts"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="hover:text-[#9c8b7a] transition-colors"
+					>
+						@Alwurts
+					</a>
+				</div>
+			</footer>
+
 			<GameOverModal open={showGameOver} onOpenChange={setShowGameOver} />
 		</div>
 	);
