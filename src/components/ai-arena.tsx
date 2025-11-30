@@ -9,22 +9,18 @@ import GameOverModal from "./game-over-modal";
 export default function AiArena() {
 	const [showGameOver, setShowGameOver] = useState(false);
 
-	// Selectors from Store
 	const { players, startBattle, stopBattle, resetArena, isArenaRunning, saveMatchResults } =
 		useArenaStore();
 
 	const handleToggleBattle = () => {
 		if (isArenaRunning) {
-			console.log("🛑 Stopping battle");
 			stopBattle();
 		} else {
-			console.log("▶️ Starting battle");
 			startBattle();
 			setShowGameOver(false);
 		}
 	};
 
-	// Auto-stop when all players are finished
 	useEffect(() => {
 		if (!isArenaRunning) {
 			return;
@@ -35,7 +31,6 @@ export default function AiArena() {
 		);
 
 		if (allFinished && Object.keys(players).length > 0) {
-			console.log("🏁 All players finished! Stopping battle.");
 			stopBattle();
 			saveMatchResults();
 			setShowGameOver(true);
@@ -50,7 +45,6 @@ export default function AiArena() {
 					{MODELS.length} AIs competing to reach the <strong>128 tile</strong> first!
 				</p>
 
-				{/* Controls */}
 				<div className="flex gap-4 items-center bg-white p-4 rounded-lg shadow-sm">
 					<button
 						type="button"
@@ -84,7 +78,6 @@ export default function AiArena() {
 				</div>
 			</div>
 
-			{/* The Grid of Players */}
 			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
 				{MODELS.map((modelId) => (
 					<AiBoard key={modelId} modelId={modelId} />

@@ -46,10 +46,8 @@ export default function AiBoard({ modelId }: AiBoardProps) {
 
 	const { grid, stats, status, history, errorMessage } = player;
 
-	// Get last 3 history items reversed
 	const recentHistory = [...history].reverse().slice(0, 3);
 
-	// Helper for Status Badge
 	const getStatusBadge = () => {
 		switch (status) {
 			case "WON":
@@ -69,7 +67,6 @@ export default function AiBoard({ modelId }: AiBoardProps) {
 		<div
 			className={`flex flex-col items-center bg-[#faf8ef] p-2 rounded-lg shadow-sm border-4 ${status === "WON" ? "border-green-400" : "border-transparent"}`}
 		>
-			{/* Header Stats */}
 			<div className="flex justify-between items-center w-full mb-2 px-1">
 				<div className="flex flex-col">
 					<span className="font-bold text-[#776e65] text-sm">{modelId}</span>
@@ -98,7 +95,6 @@ export default function AiBoard({ modelId }: AiBoardProps) {
 				</div>
 			</div>
 
-			{/* Error Message */}
 			{errorMessage && (
 				<div className="w-full bg-red-100 text-red-600 text-xs p-1 mb-2 rounded">
 					<div className="font-semibold">{errorMessage}</div>
@@ -112,9 +108,7 @@ export default function AiBoard({ modelId }: AiBoardProps) {
 				</div>
 			)}
 
-			{/* The Grid */}
 			<div className="relative bg-[#bbada0] p-2 rounded-md w-full aspect-square">
-				{/* Background Grid */}
 				<div className="grid grid-cols-4 grid-rows-4 gap-2 w-full h-full">
 					{Array.from({ length: 16 }).map((_, i) => (
 						<div
@@ -127,7 +121,6 @@ export default function AiBoard({ modelId }: AiBoardProps) {
 					))}
 				</div>
 
-				{/* Active Tiles */}
 				<div className="absolute top-0 left-0 p-2 w-full h-full grid grid-cols-4 grid-rows-4 gap-2 pointer-events-none">
 					{grid.map((row, r) =>
 						row.map((val, c) => (
@@ -145,7 +138,6 @@ export default function AiBoard({ modelId }: AiBoardProps) {
 				</div>
 			</div>
 
-			{/* History Log */}
 			{recentHistory.length > 0 && (
 				<div className="w-full mt-2 bg-white/50 rounded p-2 text-xs">
 					<div className="font-bold text-[#776e65] mb-1">Last Moves:</div>

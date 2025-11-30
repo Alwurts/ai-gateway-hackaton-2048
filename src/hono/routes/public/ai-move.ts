@@ -36,7 +36,6 @@ const aiMoveRoutes = new Hono().post("/", async (c) => {
 
 	const startTime = performance.now();
 
-	// Construct Prompt
 	const prompt = `
 Current Game State:
 - Score: ${score}

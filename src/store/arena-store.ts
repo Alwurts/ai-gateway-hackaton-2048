@@ -12,11 +12,9 @@ import {
 } from "@/lib/game-logic";
 import { MODELS } from "@/lib/models";
 
-// Configuration Constants
 const MAX_CONSECUTIVE_INVALID_MOVES = 10;
 const GLOBAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const API_TIMEOUT_MS = 90 * 1000; // 90 seconds
-
 
 export type PlayerStatus = "IDLE" | "THINKING" | "PLAYING" | "WON" | "GAME_OVER" | "ERROR";
 
@@ -49,12 +47,10 @@ interface ArenaStore {
 	players: Record<string, PlayerState>;
 	isArenaRunning: boolean;
 
-	// Actions
 	startBattle: () => void;
 	stopBattle: () => void;
 	resetArena: () => void;
 
-	// The Core Logic
 	processMove: (modelId: string, direction: Direction, thinkingTimeMs: number) => void;
 	markError: (modelId: string, message: string, details?: string) => void;
 	playTurn: (modelId: string) => Promise<void>;
@@ -93,12 +89,10 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 		const state = get();
 		const player = state.players[modelId];
 
-		// 1. Checks
 		if (!state.isArenaRunning || !player || player.status !== "PLAYING") {
 			return;
 		}
 
-		// 2. Check global timeout
 		if (player.startTimeMs) {
 			const elapsed = Date.now() - player.startTimeMs;
 			if (elapsed > GLOBAL_TIMEOUT_MS) {
@@ -112,7 +106,6 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 		}
 
 		try {
-			// 3. API Call with timeout
 			const timeoutPromise = new Promise((_, reject) =>
 				setTimeout(() => reject(new Error("API timeout")), API_TIMEOUT_MS),
 			);
@@ -130,20 +123,15 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 				},
 			});
 
-			const res = await Promise.race([apiPromise, timeoutPromise]) as Awaited<
-				typeof apiPromise
-			>;
+			const res = (await Promise.race([apiPromise, timeoutPromise])) as Awaited<typeof apiPromise>;
 
 			if (!res.ok) {
 				throw new Error(`API Error: ${res.status}`);
 			}
 			const data = await res.json();
 
-			// 4. Process Move
 			state.processMove(modelId, data.direction as Direction, data.durationMs);
 
-			// 5. Recursive Call (Next Turn)
-			// We fetch the fresh state to check if we should continue
 			const freshState = get();
 			if (freshState.isArenaRunning && freshState.players[modelId].status === "PLAYING") {
 				freshState.playTurn(modelId);
@@ -175,7 +163,6 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 			return { isArenaRunning: true, players: newPlayers };
 		});
 
-		// Trigger the loop for everyone
 		const state = get();
 		Object.keys(state.players).forEach((modelId) => {
 			state.playTurn(modelId);
@@ -197,7 +184,6 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 				return state;
 			}
 
-			// 1. Validate Client Side
 			const valid = isValidMove(player.grid, direction);
 			const currentTurn = player.stats.moves + 1;
 
@@ -206,22 +192,18 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 			let moveResult: "SUCCESS" | "INVALID" = "INVALID";
 
 			if (valid) {
-				// Apply Move
 				const result = moveGrid(player.grid, direction);
 				newGrid = addRandomTile(result.newGrid);
 				scoreIncrease = result.scoreIncrease;
 				moveResult = "SUCCESS";
 			}
 
-			// 2. Update Stats
 			const newScore = player.stats.score + scoreIncrease;
 			const newTotalTime = player.stats.totalThinkingTimeMs + thinkingTimeMs;
 			const currentMaxTile = getHighestTile(newGrid);
 
-			// 3. Update consecutive invalid counter
-			let newConsecutiveInvalid = valid ? 0 : player.consecutiveInvalidMoves + 1;
+			const newConsecutiveInvalid = valid ? 0 : player.consecutiveInvalidMoves + 1;
 
-			// 4. Determine Status
 			let newStatus: PlayerStatus = "PLAYING";
 			if (newConsecutiveInvalid >= MAX_CONSECUTIVE_INVALID_MOVES) {
 				newStatus = "ERROR";
@@ -231,7 +213,6 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 				newStatus = "GAME_OVER";
 			}
 
-			// 5. Update History
 			const newHistory = [
 				...player.history,
 				{
@@ -287,7 +268,6 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 
 	saveMatchResults: async () => {
 		const state = get();
-		// Avoid double saving
 		if (state.isArenaRunning) {
 			return;
 		}
@@ -301,7 +281,6 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 			totalThinkingTimeMs: p.stats.totalThinkingTimeMs,
 		}));
 
-		// Determine winner (highest score)
 		const winner = results.sort((a, b) => b.finalScore - a.finalScore)[0];
 
 		try {
@@ -312,7 +291,6 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 					results,
 				},
 			});
-			console.log("✅ Match results saved!");
 		} catch (error) {
 			console.error("❌ Failed to save match results:", error);
 		}
