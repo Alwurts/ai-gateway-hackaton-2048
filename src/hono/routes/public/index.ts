@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import type { HonoContext } from "@/types/hono";
-import { honoAuthMiddleware } from "../../middleware/auth";
+import aiMoveRoutes from "./ai-move";
 import contactRoutes from "./contact";
 import statusRoutes from "./status";
 
 const publicRoutes = new Hono<HonoContext>()
-	.use(honoAuthMiddleware)
 	.route("/status", statusRoutes)
-	.route("/contact", contactRoutes);
+	.route("/contact", contactRoutes)
+	.route("/ai-move", aiMoveRoutes);
 
 export default publicRoutes;
