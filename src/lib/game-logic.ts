@@ -34,6 +34,12 @@ export function createInitialGrid(): Grid {
 	return grid;
 }
 
+// Helper to simulate a move without modifying the original
+export function isValidMove(grid: Grid, direction: Direction): boolean {
+	const { moved } = moveGrid(grid, direction);
+	return moved;
+}
+
 export function createAdvancedGrid(): Grid {
 	let grid = createEmptyGrid();
 	const tiles = [64, 32, 16, 8];
@@ -154,4 +160,16 @@ export function moveGrid(
 	}
 
 	return { newGrid, scoreIncrease, moved };
+}
+
+export function getHighestTile(grid: Grid): number {
+	let max = 0;
+	for (let r = 0; r < GRID_SIZE; r++) {
+		for (let c = 0; c < GRID_SIZE; c++) {
+			if (grid[r][c] > max) {
+				max = grid[r][c];
+			}
+		}
+	}
+	return max;
 }

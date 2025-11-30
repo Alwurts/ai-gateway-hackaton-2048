@@ -1,13 +1,11 @@
 import { generateObject } from "ai";
 import { Hono } from "hono";
-import type { MoveHistoryEntry } from "@/hooks/use-2048";
-import { model } from "@/lib/models";
-import { MoveSchema } from "@/lib/schema";
-import type { HonoContext } from "@/types/hono";
+import { model, type modelID } from "@/lib/models";
+import { AiMoveRequestSchema, MoveSchema } from "@/lib/schema";
+
 
 function formatGrid(grid: number[][]): string {
 	const maxWidth = Math.max(...grid.flat().map((n) => (n === 0 ? 1 : String(n).length)));
-
 	return grid
 		.map((row) =>
 			row.map((cell) => (cell === 0 ? "." : String(cell)).padStart(maxWidth, " ")).join(" | "),
@@ -15,80 +13,67 @@ function formatGrid(grid: number[][]): string {
 		.join("\n");
 }
 
-function formatMoveHistory(history: MoveHistoryEntry[]): string {
+function formatHistory(history: { turn: number; direction: string; result: string }[]) {
 	if (history.length === 0) {
-		return "No previous moves.";
+		return "None";
 	}
-
-	// Show last 5 moves to keep context manageable
-	const recentHistory = history.slice(-5);
-
-	return recentHistory
-		.map((entry) => {
-			return `Turn ${entry.turn}: Moved ${entry.direction}
-  Score: ${entry.scoreBefore} → ${entry.scoreAfter} (+${entry.scoreIncrease})
-  Board After:
-${formatGrid(entry.gridAfter)
-	.split("\n")
-	.map((line) => `  ${line}`)
-	.join("\n")}`;
-		})
-		.join("\n\n");
+	// Get last 5 moves
+	return history
+		.slice(-5)
+		.map((h) => `Turn ${h.turn}: ${h.direction} -> ${h.result}`)
+		.join("\n");
 }
 
-const aiMoveRoutes = new Hono<HonoContext>().post("/", async (c) => {
-	const startTime = Date.now();
-	const { grid, score, modelId, turns, invalidMove, moveHistory = [] } = await c.req.json();
+const aiMoveRoutes = new Hono().post("/", async (c) => {
+	const body = await c.req.json();
+	const result = AiMoveRequestSchema.safeParse(body);
 
-	console.log(`\n[${"=".repeat(60)}]`);
-	console.log(`[AI REQUEST] Model: ${modelId} | Turn: ${turns || "?"} | Score: ${score}`);
-	if (invalidMove) {
-		console.log(`[RETRY] Previous invalid move: ${invalidMove}`);
+	if (!result.success) {
+		return c.json({ error: "Invalid request body" }, 400);
 	}
-	console.log(`[TIMESTAMP] ${new Date().toISOString()}`);
 
-	const languageModel = model.languageModel(modelId);
+	const { grid, score, modelId, history } = result.data;
+	const languageModel = model.languageModel(modelId as modelID);
 
-	let prompt = `Current Score: ${score}
+	const startTime = performance.now();
 
-Current Grid State (0 shown as .):
+	// Construct Prompt
+	const prompt = `
+Current Game State:
+- Score: ${score}
+- Turn: ${history.length + 1}
+
+Grid (0 is empty):
 ${formatGrid(grid)}
 
-Move History (last 5 moves):
-${formatMoveHistory(moveHistory)}`;
+Recent Move History:
+${formatHistory(history)}
 
-	if (invalidMove) {
-		prompt += `\n\nIMPORTANT: Your previous move "${invalidMove}" was INVALID (the board did not change).
-
-This means there are no tiles that can move or merge in that direction.
-
-You MUST choose a different direction. Valid directions are: UP, DOWN, LEFT, RIGHT.`;
-	}
-
-	console.log(`[PROMPT]\n${prompt}`);
+INSTRUCTIONS:
+1. Analyze the grid.
+2. Review your Recent Move History.
+3. WARNING: If you see "INVALID" in history, that means the move did NOT change the board. Do NOT repeat invalid moves for the same board state.
+4. Select the best move (UP, DOWN, LEFT, RIGHT).
+`;
 
 	try {
 		const { object } = await generateObject({
 			model: languageModel,
 			schema: MoveSchema,
-			system:
-				"You are an expert 2048 bot. Your goal is to reach the 128 tile. Choose the best moves to reach this value. Learn from your move history to make better decisions.",
+			system: "You are a competitive 2048 AI. Reach the 128 tile as fast as possible.",
 			prompt,
 		});
 
-		const duration = Date.now() - startTime;
-		console.log(
-			`[AI RESPONSE] Model: ${modelId} | Direction: ${object.direction} | Duration: ${duration}ms`,
-		);
-		console.log(`[${"=".repeat(60)}]\n`);
+		const endTime = performance.now();
 
-		return c.json(object);
+		return c.json({
+			direction: object.direction,
+			reasoning: object.reasoning,
+			durationMs: Math.round(endTime - startTime),
+		});
 	} catch (error) {
-		const duration = Date.now() - startTime;
-		console.error(`[AI ERROR] Model: ${modelId} | Duration: ${duration}ms`);
-		console.error(`[ERROR DETAILS]`, error);
-		console.log(`[${"=".repeat(60)}]\n`);
-		throw error; // Let the client handle the error
+		console.error("AI Error:", error);
+		return c.json({ error: "Failed to generate move" }, 500);
 	}
 });
 

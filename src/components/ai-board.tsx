@@ -1,14 +1,11 @@
 "use client";
 
-import use2048, { type Grid } from "../hooks/use-2048";
-import { useAiPlayer } from "../hooks/use-ai-player";
+import { Badge } from "@/components/ui/badge";
+import { useArenaLoop } from "@/hooks/use-arena-loop";
+import { useArenaStore } from "@/store/arena-store";
 
 interface AiBoardProps {
 	modelId: string;
-	name: string;
-	provider: string;
-	isPlaying: boolean;
-	initialGrid?: Grid;
 }
 
 const TILE_COLORS: Record<number, string> = {
@@ -40,40 +37,84 @@ const TILE_FONT_SIZES: Record<number, string> = {
 	2048: "text-lg",
 };
 
-export default function AiBoard({ modelId, name, provider, isPlaying, initialGrid }: AiBoardProps) {
-	const { grid, score, turns, gameOver, move, getGameState } = use2048(initialGrid);
-	const { isThinking } = useAiPlayer({
-		getGameState,
-		move,
-		enabled: isPlaying && !gameOver,
-		modelId,
-	});
+export default function AiBoard({ modelId }: AiBoardProps) {
+	const player = useArenaStore((state) => state.players[modelId]);
+
+	// Hook is mounted here
+	useArenaLoop(modelId);
+
+	if (!player) {
+		return <div className="bg-gray-200 h-80 rounded-lg animate-pulse" />;
+	}
+
+	const { grid, stats, status, history, errorMessage } = player;
+
+	// Get last 3 history items reversed
+	const recentHistory = [...history].reverse().slice(0, 3);
+
+	// Helper for Status Badge
+	const getStatusBadge = () => {
+		switch (status) {
+			case "WON":
+				return <Badge className="bg-green-500 hover:bg-green-600">WINNER (128!)</Badge>;
+			case "GAME_OVER":
+				return <Badge variant="destructive">GAME OVER</Badge>;
+			case "ERROR":
+				return <Badge variant="destructive">ERROR</Badge>;
+			case "PLAYING":
+				return <Badge className="bg-blue-500 animate-pulse">THINKING</Badge>;
+			default:
+				return <Badge variant="secondary">READY</Badge>;
+		}
+	};
 
 	return (
-		<div className="flex flex-col items-center bg-[#faf8ef] p-2 rounded-lg shadow-sm">
+		<div
+			className={`flex flex-col items-center bg-[#faf8ef] p-2 rounded-lg shadow-sm border-4 ${status === "WON" ? "border-green-400" : "border-transparent"}`}
+		>
+			{/* Header Stats */}
 			<div className="flex justify-between items-center w-full mb-2 px-1">
 				<div className="flex flex-col">
-					<span className="font-bold text-[#776e65] text-sm">{name}</span>
-					<span className="text-[#776e65] text-[10px] opacity-75">{provider}</span>
+					<span className="font-bold text-[#776e65] text-sm">{modelId}</span>
+					<div className="flex items-center gap-2 mt-1">
+						{getStatusBadge()}
+						{stats.totalThinkingTimeMs > 0 && (
+							<span className="text-[10px] text-gray-500 font-mono">
+								{(stats.totalThinkingTimeMs / 1000).toFixed(1)}s
+							</span>
+						)}
+					</div>
 				</div>
 				<div className="flex gap-2">
-					<div className="bg-[#bbada0] rounded px-2 py-0.5">
-						<span className="text-[#eee4da] text-xs font-bold mr-1">SCORE</span>
-						<span className="text-white font-bold text-sm">{score}</span>
+					<div className="bg-[#bbada0] rounded px-2 py-0.5 text-center min-w-[50px]">
+						<span className="text-[#eee4da] text-[10px] font-bold block leading-none mb-1">
+							SCORE
+						</span>
+						<span className="text-white font-bold text-sm">{stats.score}</span>
 					</div>
-					<div className="bg-[#bbada0] rounded px-2 py-0.5">
-						<span className="text-[#eee4da] text-xs font-bold mr-1">TURNS</span>
-						<span className="text-white font-bold text-sm">{turns}</span>
+					<div className="bg-[#bbada0] rounded px-2 py-0.5 text-center min-w-[50px]">
+						<span className="text-[#eee4da] text-[10px] font-bold block leading-none mb-1">
+							MOVES
+						</span>
+						<span className="text-white font-bold text-sm">{stats.moves}</span>
 					</div>
 				</div>
 			</div>
 
+			{/* Error Message */}
+			{errorMessage && (
+				<div className="w-full bg-red-100 text-red-600 text-xs p-1 mb-2 rounded">
+					{errorMessage}
+				</div>
+			)}
+
+			{/* The Grid */}
 			<div className="relative bg-[#bbada0] p-2 rounded-md w-full aspect-square">
-				{/* Grid Background */}
+				{/* Background Grid */}
 				<div className="grid grid-cols-4 grid-rows-4 gap-2 w-full h-full">
 					{Array.from({ length: 16 }).map((_, i) => (
 						<div
-							key={`empty-tile-${
+							key={`bg-${
 								// biome-ignore lint/suspicious/noArrayIndexKey: Ok
 								i
 							}`}
@@ -82,11 +123,11 @@ export default function AiBoard({ modelId, name, provider, isPlaying, initialGri
 					))}
 				</div>
 
-				{/* Tiles */}
+				{/* Active Tiles */}
 				<div className="absolute top-0 left-0 p-2 w-full h-full grid grid-cols-4 grid-rows-4 gap-2 pointer-events-none">
 					{grid.map((row, r) =>
 						row.map((val, c) => (
-							<div key={`row-${r}-col-${c}-${val}`} className="relative w-full h-full">
+							<div key={`tile-${r}-${c}-${val}`} className="relative w-full h-full">
 								{val !== 0 && (
 									<div
 										className={`absolute inset-0 flex items-center justify-center rounded-sm font-bold transition-all duration-100 ease-in-out ${TILE_COLORS[val] || "bg-[#3c3a32] text-[#f9f6f2]"} ${TILE_FONT_SIZES[val] || "text-xl"}`}
@@ -98,17 +139,23 @@ export default function AiBoard({ modelId, name, provider, isPlaying, initialGri
 						)),
 					)}
 				</div>
-
-				{/* Overlays */}
-				{gameOver && (
-					<div className="absolute inset-0 bg-white/60 flex items-center justify-center rounded-md z-10">
-						<span className="text-[#776e65] font-bold text-xl">Game Over</span>
-					</div>
-				)}
-				{isThinking && !gameOver && (
-					<div className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse z-20"></div>
-				)}
 			</div>
+
+			{/* History Log */}
+			{recentHistory.length > 0 && (
+				<div className="w-full mt-2 bg-white/50 rounded p-2 text-xs">
+					<div className="font-bold text-[#776e65] mb-1">Last Moves:</div>
+					{recentHistory.map((h) => (
+						<div key={h.turn} className="flex justify-between items-center">
+							<span className="font-mono text-gray-500">#{h.turn}</span>
+							<span className="font-bold">{h.direction}</span>
+							<span className={h.result === "SUCCESS" ? "text-green-600" : "text-red-500"}>
+								{h.result}
+							</span>
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }
